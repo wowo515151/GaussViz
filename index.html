@@ -1,0 +1,1479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GaussViz — Electron Cloud Lab</title>
+  <meta name="description" content="Interactive marching-cubes electron cloud visualizer built from Gaussian orbital approximations." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #e8edf4;
+      --muted: #7d8796;
+      --muted-2: #566170;
+      --line: rgba(175, 193, 216, .13);
+      --panel: #11161d;
+      --panel-2: #161c24;
+      --accent: #98d8ff;
+      --accent-strong: #5fb8ec;
+      --warning: #f1b76c;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      color: var(--ink);
+      background: #2b3037;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+    }
+
+    button, input { font: inherit; }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 302px minmax(0, 1fr);
+      height: 100vh;
+      min-height: 620px;
+    }
+
+    .control-panel {
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      padding: 26px 20px 18px;
+      overflow-y: auto;
+      background:
+        radial-gradient(circle at 0 0, rgba(120, 170, 210, .09), transparent 34%),
+        linear-gradient(180deg, #131922 0%, #10151c 100%);
+      border-right: 1px solid var(--line);
+      box-shadow: 14px 0 42px rgba(0, 0, 0, .20);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 29px;
+      height: 29px;
+      border: 1px solid rgba(151, 218, 255, .55);
+      border-radius: 50%;
+      color: var(--accent);
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      box-shadow: inset 0 0 18px rgba(106, 187, 235, .12), 0 0 18px rgba(71, 153, 201, .15);
+    }
+
+    .brand-wordmark {
+      letter-spacing: .19em;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--accent);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 220px;
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.03;
+      letter-spacing: -.045em;
+      font-weight: 600;
+    }
+
+    .intro {
+      margin: 13px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 28px 0 10px;
+      color: var(--muted-2);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .section-label span:last-child { color: #677384; letter-spacing: .04em; }
+
+    .parameter-group { margin-top: 23px; }
+
+    .parameter-group + .parameter-group { margin-top: 16px; }
+
+    .parameter-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 9px;
+      color: var(--muted-2);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+
+    .parameter-title output { color: var(--accent); letter-spacing: .02em; }
+
+    .chip-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+
+    .chip-grid.angular { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+    .chip, .m-button {
+      min-height: 34px;
+      padding: 0 4px;
+      color: #aab7c6;
+      background: rgba(255, 255, 255, .025);
+      border: 1px solid rgba(187, 205, 230, .12);
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: "DM Mono", monospace;
+      font-size: 12px;
+      transition: border-color .2s ease, color .2s ease, background .2s ease;
+    }
+
+    .chip:hover, .m-button:hover { color: #dbeeff; border-color: rgba(146, 209, 242, .42); }
+
+    .chip.active, .m-button.active {
+      color: #d8f2ff;
+      background: rgba(83, 169, 216, .18);
+      border-color: rgba(139, 210, 249, .68);
+      box-shadow: inset 0 0 16px rgba(109, 190, 236, .07);
+    }
+
+    .chip:disabled { color: #4f5966; background: rgba(255, 255, 255, .012); border-color: rgba(187, 205, 230, .05); cursor: not-allowed; }
+
+    .m-grid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+
+    .m-button { min-height: 29px; font-size: 10px; }
+
+    .m-button[hidden] { display: none; }
+
+    .inspector {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .readout-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 0 7px;
+    }
+
+    .readout-label { color: var(--muted); font-size: 11px; }
+    .readout-value { color: #cbd9e8; font-family: "DM Mono", monospace; font-size: 11px; }
+
+    .equation {
+      min-height: 32px;
+      margin: 10px 0 14px;
+      padding: 9px 10px;
+      color: #b9d9e9;
+      background: rgba(132, 192, 226, .055);
+      border-left: 2px solid rgba(135, 207, 245, .46);
+      font-family: "DM Mono", monospace;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .field-note { margin-top: 10px; color: #637184; font-size: 10px; line-height: 1.45; }
+
+    .slider-row { margin-top: 17px; }
+    .slider-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .slider-meta label { color: var(--muted); font-size: 11px; }
+    .slider-meta output { color: var(--accent); font-family: "DM Mono", monospace; font-size: 11px; }
+
+    input[type="range"] {
+      width: 100%;
+      height: 3px;
+      margin: 0;
+      appearance: none;
+      background: linear-gradient(90deg, var(--accent-strong) 0%, var(--accent-strong) 22%, #263543 22%, #263543 100%);
+      border-radius: 4px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      width: 12px;
+      height: 12px;
+      appearance: none;
+      background: #d7f2ff;
+      border: 2px solid #5baedb;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(91, 174, 219, .10);
+      cursor: grab;
+    }
+
+    .composite-toggle {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 19px;
+      color: #b9c6d5;
+      font-size: 11px;
+      line-height: 1.35;
+      cursor: pointer;
+    }
+
+    .composite-toggle input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--accent-strong);
+    }
+
+    .panel-footer {
+      margin-top: auto;
+      padding-top: 18px;
+      color: #5d6878;
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      line-height: 1.6;
+      letter-spacing: .03em;
+    }
+
+    .panel-footer b { color: #95a6b8; font-weight: 400; }
+
+    .stage {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 54% 42%, rgba(91, 105, 120, .26) 0%, rgba(52, 59, 68, .16) 41%, rgba(29, 34, 41, .42) 100%),
+        #2b3037;
+    }
+
+    .stage::before {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      content: "";
+      background: linear-gradient(90deg, rgba(8, 10, 14, .24), transparent 16%, transparent 83%, rgba(8, 10, 14, .32));
+    }
+
+    .stage-header {
+      position: absolute;
+      z-index: 3;
+      top: 26px;
+      right: 28px;
+      left: 31px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .stage-heading { color: #cbd5e1; font-size: 11px; letter-spacing: .06em; }
+    .stage-subheading { margin-top: 6px; color: #687687; font-family: "DM Mono", monospace; font-size: 9px; letter-spacing: .08em; }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      color: #94a7ba;
+      background: rgba(12, 17, 23, .66);
+      border: 1px solid rgba(176, 199, 221, .14);
+      border-radius: 4px;
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      letter-spacing: .05em;
+      backdrop-filter: blur(10px);
+    }
+
+    .status-dot { width: 6px; height: 6px; background: #7dd5aa; border-radius: 50%; box-shadow: 0 0 9px #7dd5aa; }
+
+    #viewport { position: absolute; inset: 0; z-index: 0; }
+    #viewport canvas { display: block; width: 100%; height: 100%; }
+
+    .viewport-hint {
+      position: absolute;
+      z-index: 3;
+      right: 28px;
+      bottom: 25px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #6d7c8d;
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      pointer-events: none;
+    }
+
+    .mouse-icon { width: 14px; height: 20px; border: 1px solid #748598; border-radius: 8px; opacity: .75; }
+    .mouse-icon::after { display: block; width: 2px; height: 4px; margin: 4px auto 0; content: ""; background: #9eb4c9; border-radius: 2px; }
+
+    .reset-view {
+      position: absolute;
+      z-index: 3;
+      bottom: 23px;
+      left: 31px;
+      padding: 8px 11px;
+      color: #758497;
+      background: rgba(12, 17, 23, .55);
+      border: 1px solid rgba(176, 199, 221, .12);
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      letter-spacing: .06em;
+      transition: color .2s ease, border-color .2s ease;
+    }
+
+    .reset-view:hover { color: #b4d7ea; border-color: rgba(146, 209, 242, .45); }
+
+    .video-export-controls {
+      position: absolute;
+      z-index: 4;
+      top: 70px;
+      right: 28px;
+      display: grid;
+      gap: 7px;
+      width: min(355px, calc(100% - 56px));
+      padding: 10px;
+      background: rgba(12, 17, 23, .78);
+      border: 1px solid rgba(176, 199, 221, .16);
+      border-radius: 5px;
+      backdrop-filter: blur(10px);
+    }
+
+    .video-export-actions { display: flex; gap: 7px; }
+    .video-export-controls select,
+    .video-export-controls button,
+    .video-export-controls a {
+      min-width: 0;
+      padding: 8px 9px;
+      color: #c4d5e5;
+      background: rgba(255, 255, 255, .035);
+      border: 1px solid rgba(176, 199, 221, .2);
+      border-radius: 4px;
+      font-family: "DM Mono", monospace;
+      font-size: 9px;
+      letter-spacing: .04em;
+    }
+
+    .video-export-controls select { flex: 1; }
+    .video-export-controls button,
+    .video-export-controls a { color: #d8f2ff; cursor: pointer; text-align: center; text-decoration: none; }
+    .video-export-controls button:hover,
+    .video-export-controls a:hover { border-color: rgba(146, 209, 242, .58); }
+    .video-export-controls button:disabled { opacity: .55; cursor: progress; }
+    .video-export-status { min-height: 12px; color: #8292a4; font-family: "DM Mono", monospace; font-size: 9px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+    .loading {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      color: #9bb2c5;
+      background: #0b0e13;
+      font-family: "DM Mono", monospace;
+      font-size: 11px;
+      letter-spacing: .08em;
+    }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .app-shell { display: block; height: auto; min-height: 100vh; }
+      .control-panel { min-height: auto; padding-bottom: 22px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .panel-footer { display: none; }
+      .stage { height: 70vh; min-height: 520px; }
+      .stage-header { top: 19px; left: 20px; right: 20px; }
+      .reset-view { left: 20px; }
+      .viewport-hint { right: 20px; }
+      .video-export-controls { top: 70px; right: 20px; width: min(355px, calc(100% - 40px)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="control-panel">
+      <div class="brand">
+        <div class="brand-mark">∫</div>
+        <div class="brand-wordmark">GAUSSVIZ</div>
+      </div>
+
+      <div>
+        <p class="eyebrow">electron cloud lab / 01</p>
+        <h1>Read the shape of an orbital.</h1>
+        <p class="intro">Gaussian wavefunction approximations rendered as an adaptive isosurface.</p>
+      </div>
+
+      <div class="section-label"><span>orbital controls</span><span>n · ℓ · m</span></div>
+
+      <div class="parameter-group">
+        <div class="parameter-title"><span>principal shell / n</span><output id="n-value">1</output></div>
+        <div class="chip-grid" id="n-controls" aria-label="Principal shell"></div>
+      </div>
+
+      <div class="parameter-group">
+        <div class="parameter-title"><span>angular momentum / ℓ</span><output id="l-value">s</output></div>
+        <div class="chip-grid angular" id="l-controls" aria-label="Angular momentum"></div>
+      </div>
+
+      <div class="parameter-group">
+        <div class="parameter-title"><span>magnetic orientation / m</span><output id="m-value">0</output></div>
+        <div class="m-grid" id="m-controls" aria-label="Magnetic orientation"></div>
+      </div>
+
+      <div class="inspector">
+        <div class="readout-row"><span class="readout-label">active basis</span><span class="readout-value" id="active-name">1s / m = 0</span></div>
+        <div class="readout-row"><span class="readout-label">radial nodes</span><span class="readout-value" id="active-nodes">0</span></div>
+        <div class="equation" id="equation">ψ₁ₛ ≈ exp(−α r²)</div>
+        <div class="field-note">Real Gaussian basis approximation. Positive and negative phase lobes share one density surface.</div>
+
+        <label class="composite-toggle" for="composite-toggle">
+          <input id="composite-toggle" type="checkbox" />
+          <span>Composite lower-energy density</span>
+        </label>
+        <div class="field-note" id="composite-summary">Selected orbital only.</div>
+        <label class="composite-toggle" for="all-lower-toggle">
+          <input id="all-lower-toggle" type="checkbox" />
+          <span>All lower + selected · separate colors</span>
+        </label>
+        <div class="field-note" id="all-lower-summary">One selected orbital surface.</div>
+        <label class="composite-toggle" for="wireframe-toggle">
+          <input id="wireframe-toggle" type="checkbox" />
+          <span>Wireframe · capped 3D tubes</span>
+        </label>
+        <div class="field-note" id="wireframe-summary">Filled isosurface.</div>
+
+        <label class="composite-toggle" for="multi-iso-toggle">
+          <input id="multi-iso-toggle" type="checkbox" />
+          <span>Multi-Iso · rainbow levels</span>
+        </label>
+        <div class="field-note" id="multi-iso-summary">One isosurface level.</div>
+        <div id="multi-iso-options" hidden>
+          <div class="slider-row">
+            <div class="slider-meta"><label for="multi-iso-low">lowest iso level</label><output id="multi-iso-low-value">0.06</output></div>
+            <input id="multi-iso-low" type="range" min="0.04" max="0.41" step="0.01" value="0.06" />
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta"><label for="multi-iso-high">highest iso level</label><output id="multi-iso-high-value">0.24</output></div>
+            <input id="multi-iso-high" type="range" min="0.07" max="0.42" step="0.01" value="0.24" />
+          </div>
+          <div class="slider-row">
+            <div class="slider-meta"><label for="multi-iso-count">number of rainbow levels</label><output id="multi-iso-count-value">3</output></div>
+            <input id="multi-iso-count" type="range" min="2" max="10" step="1" value="3" />
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-meta"><label for="tube-radius-range">wireframe tube radius</label><output id="tube-radius-value">0.001</output></div>
+          <input id="tube-radius-range" type="range" min="0.001" max="0.030" step="0.001" value="0.001" />
+        </div>
+
+        <div id="single-iso-controls" class="slider-row">
+          <div class="slider-meta"><label for="iso-range">isosurface threshold</label><output id="iso-value">0.12</output></div>
+          <input id="iso-range" type="range" min="0.04" max="0.42" step="0.01" value="0.12" />
+        </div>
+
+      </div>
+
+      <div class="panel-footer"><b>FIELD NOTES</b><br />Density = |ψ|² · marching cubes<br />Drag to rotate · scroll to zoom</div>
+    </aside>
+
+    <main class="stage">
+      <div class="stage-header">
+        <div>
+          <div class="stage-heading">MARCHING CUBES / ELECTRON DENSITY</div>
+          <div class="stage-subheading" id="stage-subheading">NORMALIZED GAUSSIAN FIELD · 72³ SAMPLE GRID</div>
+        </div>
+        <div class="status-pill"><span class="status-dot"></span><span>LIVE FIELD</span></div>
+      </div>
+      <div id="viewport"><div class="loading" id="loading">INITIALIZING FIELD…</div></div>
+      <button class="reset-view" id="reset-view">RESET VIEW</button>
+      <div class="video-export-controls">
+        <div class="video-export-actions">
+          <label class="sr-only" for="video-resolution">MP4 resolution</label>
+          <select id="video-resolution">
+            <option value="2560x1440" selected>2K · 2560 × 1440</option>
+            <option value="1920x1080">1080p · 1920 × 1080</option>
+            <option value="3840x2160">4K · 3840 × 2160</option>
+          </select>
+          <button id="export-video" type="button">EXPORT ROTATION</button>
+        </div>
+        <button id="screenshot-3d" type="button">SCREENSHOT 3D · 4K PNG</button>
+        <a id="download-video" hidden>DOWNLOAD VIDEO</a>
+        <div id="video-export-status" class="video-export-status" role="status" aria-live="polite">1-minute rotation · high bitrate</div>
+      </div>
+      <div class="viewport-hint"><span class="mouse-icon"></span><span>DRAG TO ORBIT · SCROLL TO ZOOM</span></div>
+    </main>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+
+    const ANGULAR_LABELS = ['s', 'p', 'd', 'f', 'g'];
+    const ANGULAR_NAMES = ['spherical', 'polar', 'clover', 'complex', 'hexadecapolar'];
+    const current = { n: 1, l: 0, m: 0, iso: .12, multiIsoLow: .06, multiIsoHigh: .24, multiIsoLevels: 3, tubeRadius: .001, composite: false, allLower: false, wireframe: false, multiIso: false };
+
+    function signedM(m) { return m > 0 ? `+${m}` : `${m}`; }
+
+    function realAngular(l, m, x, y, z, r2) {
+      if (l > 0) {
+        const r = Math.sqrt(r2);
+        if (r < 1e-6) return 0;
+        x /= r;
+        y /= r;
+        z /= r;
+        r2 = 1;
+      }
+      switch (l) {
+        case 0: return 1;
+        case 1: return m === 0 ? z : (m > 0 ? x : y);
+        case 2:
+          if (m === 0) return 2*z*z - x*x - y*y;
+          if (m === 1) return x*z;
+          if (m === -1) return y*z;
+          if (m === 2) return x*x - y*y;
+          return 2*x*y;
+        case 3:
+          if (m === 0) return z * (5*z*z - 3*r2);
+          if (m === 1) return x * (5*z*z - r2);
+          if (m === -1) return y * (5*z*z - r2);
+          if (m === 2) return z * (x*x - y*y);
+          if (m === -2) return 2*x*y*z;
+          if (m === 3) return x * (x*x - 3*y*y);
+          return y * (3*x*x - y*y);
+        default:
+          if (m === 0) return 35*z**4 - 30*z*z*r2 + 3*r2*r2;
+          if (m === 1) return x*z * (7*z*z - 3*r2);
+          if (m === -1) return y*z * (7*z*z - 3*r2);
+          if (m === 2) return (x*x - y*y) * (7*z*z - r2);
+          if (m === -2) return 2*x*y * (7*z*z - r2);
+          if (m === 3) return z * x * (x*x - 3*y*y);
+          if (m === -3) return z * y * (3*x*x - y*y);
+          if (m === 4) return x**4 - 6*x*x*y*y + y**4;
+          return 4*x*y * (x*x - y*y);
+      }
+    }
+
+    function radialEnvelope(n, l, r) {
+      const radialNodes = n - l - 1;
+      const alpha = .43 - (n - 1) * .035;
+      let value = Math.exp(-alpha * r * r);
+      for (let i = 0; i < radialNodes; i++) value *= 1 - r / (.82 + i * .68 + l * .10);
+      return value;
+    }
+
+    function sampleOrbital(orbital, x, y, z) {
+      const r2 = x*x + y*y + z*z;
+      const r = Math.sqrt(r2);
+      return realAngular(orbital.l, orbital.m, x, y, z, r2) * radialEnvelope(orbital.n, orbital.l, r);
+    }
+
+    function orderedSubshells() {
+      const subshells = [];
+      for (let n = 1; n <= 7; n++) {
+        for (let l = 0; l < n && l <= 4; l++) subshells.push({ n, l });
+      }
+      return subshells.sort((a, b) => (a.n + a.l) - (b.n + b.l) || a.n - b.n);
+    }
+
+    function fieldTerms() {
+      const terms = [];
+      if (current.composite) {
+        const subshells = orderedSubshells();
+        const targetIndex = subshells.findIndex(orbital => orbital.n === current.n && orbital.l === current.l);
+        for (let i = 0; i < targetIndex; i++) {
+          const subshell = subshells[i];
+          for (let m = -subshell.l; m <= subshell.l; m++) {
+            terms.push({ n: subshell.n, l: subshell.l, m, weight: 2 });
+          }
+        }
+      }
+      terms.push({ n: current.n, l: current.l, m: current.m, weight: 1 });
+      return terms;
+    }
+
+    function currentLabel() { return `${current.n}${ANGULAR_LABELS[current.l]} / m = ${signedM(current.m)}`; }
+
+    function currentEquation() {
+      const nodes = current.n - current.l - 1;
+      return `ψ${current.n}${ANGULAR_LABELS[current.l]}${signedM(current.m)} ≈ R(r) · Y${ANGULAR_LABELS[current.l]}${signedM(current.m)}${nodes ? ` · ${nodes} radial node${nodes > 1 ? 's' : ''}` : ''}`;
+    }
+
+    const viewport = document.querySelector('#viewport');
+    const loading = document.querySelector('#loading');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2b3037);
+    scene.fog = new THREE.FogExp2(0x090d12, 0.055);
+
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+    camera.position.set(7.4, 4.8, 9.3);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.16;
+    viewport.appendChild(renderer.domElement);
+    const VIDEO_DURATION_SECONDS = 60;
+    const VIDEO_FRAME_RATE = 30;
+    let videoExportInProgress = false;
+    let videoExportObjectUrl = null;
+    let videoExportStartedAt = null;
+    let activeVideoOrbit = null;
+    let screenshotExportInProgress = false;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 4.4;
+    controls.maxDistance = 18;
+    controls.target.set(0, 0, 0);
+    controls.rotateSpeed = 0.7;
+
+    const cloudGroup = new THREE.Group();
+    scene.add(cloudGroup);
+
+    function makeSurfaceMaterial(color) {
+      return new THREE.MeshStandardMaterial({
+        color,
+        metalness: .18,
+        roughness: .29,
+        side: THREE.DoubleSide,
+        transparent: false,
+        opacity: 1,
+        depthTest: true,
+        depthWrite: true
+      });
+    }
+
+    const surfaceMaterial = makeSurfaceMaterial(0x0a3b84);
+
+    scene.add(new THREE.HemisphereLight(0x789bc6, 0x03050b, 1.15));
+    const keyLight = new THREE.DirectionalLight(0xc5dcff, 1.75);
+    keyLight.position.set(-4, 7, 6);
+    scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x4267b5, .3);
+    rimLight.position.set(6, 2, -5);
+    scene.add(rimLight);
+
+    // A denser scalar field keeps curved orbital lobes from reading as faceted or boxy.
+    const resolution = 72;
+    const FIELD_HALF_EXTENT = 4.8;
+    const FIELD_SCALE = FIELD_HALF_EXTENT;
+    const ALL_LOWER_MAX_POLYGONS = 120000;
+    const MULTI_ISO_MAX_POLYGONS = 120000;
+    const marching = new MarchingCubes(resolution, surfaceMaterial, false, false, 480000);
+    marching.isolation = 0.88;
+    marching.position.set(0, 0, 0);
+    marching.scale.set(FIELD_SCALE, FIELD_SCALE, FIELD_SCALE);
+    cloudGroup.add(marching);
+
+    const allLowerGroup = new THREE.Group();
+    allLowerGroup.visible = false;
+    cloudGroup.add(allLowerGroup);
+    let allLowerMarching = [];
+    const multiIsoGroup = new THREE.Group();
+    multiIsoGroup.visible = false;
+    cloudGroup.add(multiIsoGroup);
+    let multiIsoMarching = [];
+    const multiIsoWireframeGroup = new THREE.Group();
+    multiIsoWireframeGroup.visible = false;
+    cloudGroup.add(multiIsoWireframeGroup);
+    let multiIsoWireframes = [];
+    const allLowerWireframeGroup = new THREE.Group();
+    allLowerWireframeGroup.visible = false;
+    cloudGroup.add(allLowerWireframeGroup);
+    let allLowerWireframes = [];
+    const singleWireframeGroup = new THREE.Group();
+    singleWireframeGroup.visible = false;
+    cloudGroup.add(singleWireframeGroup);
+
+    const nucleus = new THREE.Mesh(
+      new THREE.SphereGeometry(.065, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0xe0f4ff, transparent: true, opacity: .86 })
+    );
+    cloudGroup.add(nucleus);
+
+    const nucleusGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(.15, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0x77caff, transparent: true, opacity: .075, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    cloudGroup.add(nucleusGlow);
+
+    function updateSliderFill(rangeId = 'iso-range') {
+      const range = document.querySelector(`#${rangeId}`);
+      const pct = ((Number(range.value) - Number(range.min)) / (Number(range.max) - Number(range.min))) * 100;
+      range.style.background = `linear-gradient(90deg, #5fb8ec 0%, #5fb8ec ${pct}%, #263543 ${pct}%, #263543 100%)`;
+    }
+
+    function syncMultiIsoControls() {
+      const low = document.querySelector('#multi-iso-low');
+      const high = document.querySelector('#multi-iso-high');
+      low.max = (current.multiIsoHigh - .01).toFixed(2);
+      high.min = (current.multiIsoLow + .01).toFixed(2);
+      low.value = current.multiIsoLow.toFixed(2);
+      high.value = current.multiIsoHigh.toFixed(2);
+      document.querySelector('#multi-iso-low-value').textContent = current.multiIsoLow.toFixed(2);
+      document.querySelector('#multi-iso-high-value').textContent = current.multiIsoHigh.toFixed(2);
+      updateSliderFill('multi-iso-low');
+      updateSliderFill('multi-iso-high');
+    }
+
+    function writeFieldToMarching(target, terms) {
+      const field = target.field;
+      let ptr = 0;
+      const span = FIELD_HALF_EXTENT * 2;
+      let maxDensity = 0;
+      for (let z = 0; z < resolution; z++) {
+        const pz = (z / (resolution - 1) - .5) * span;
+        for (let y = 0; y < resolution; y++) {
+          const py = (y / (resolution - 1) - .5) * span;
+          for (let x = 0; x < resolution; x++) {
+            const px = (x / (resolution - 1) - .5) * span;
+            let density = 0;
+            for (const term of terms) {
+              const value = sampleOrbital(term, px, py, pz);
+              density += term.weight * value * value;
+            }
+            field[ptr++] = density;
+            if (density > maxDensity) maxDensity = density;
+          }
+        }
+      }
+      const scale = maxDensity > 0 ? 1 / maxDensity : 1;
+      for (let i = 0; i < field.length; i++) field[i] = 1 - Math.min(1, field[i] * scale);
+      // The field is written directly, so invalidate cached gradients before rebuilding normals.
+      target.normal_cache.fill(0);
+      target.isolation = 1 - current.iso;
+      target.update();
+    }
+
+    function writeField() {
+      writeFieldToMarching(marching, fieldTerms());
+      if (current.multiIso) disposeWireframeGroup(singleWireframeGroup);
+      else rebuildSingleWireframe();
+    }
+
+    // Render each unique mesh edge as a cylinder. Small sphere caps at every shared
+    // vertex seal the ends and hide tiny gaps where neighboring tubes meet.
+    function makeWireframe(object, color) {
+      const position = object.geometry.getAttribute('position');
+      const count = Math.min(position.count, object.geometry.drawRange.count);
+      const vertexIds = new Map();
+      const vertices = [];
+      const edges = new Set();
+      const triangleVertex = new Array(3);
+      const vertexKey = (x, y, z) => `${Math.round(x * 100000)},${Math.round(y * 100000)},${Math.round(z * 100000)}`;
+      const getVertexId = index => {
+        const x = position.getX(index), y = position.getY(index), z = position.getZ(index);
+        const key = vertexKey(x, y, z);
+        let id = vertexIds.get(key);
+        if (id === undefined) {
+          id = vertices.length;
+          vertexIds.set(key, id);
+          vertices.push(new THREE.Vector3(x, y, z));
+        }
+        return id;
+      };
+      for (let i = 0; i + 2 < count; i += 3) {
+        triangleVertex[0] = getVertexId(i);
+        triangleVertex[1] = getVertexId(i + 1);
+        triangleVertex[2] = getVertexId(i + 2);
+        for (let edge = 0; edge < 3; edge++) {
+          const a = triangleVertex[edge], b = triangleVertex[(edge + 1) % 3];
+          if (a !== b) edges.add(a < b ? `${a}:${b}` : `${b}:${a}`);
+        }
+      }
+
+      const wire = new THREE.Group();
+      wire.position.copy(object.position);
+      wire.rotation.copy(object.rotation);
+      wire.scale.copy(object.scale);
+      const radius = current.tubeRadius / FIELD_SCALE;
+      const cylinderGeometry = new THREE.CylinderGeometry(radius, radius, 1, 6, 1, false);
+      const capGeometry = new THREE.SphereGeometry(radius * 1.035, 8, 6);
+      const material = makeSurfaceMaterial(color);
+      material.emissive.set(color);
+      material.emissiveIntensity = .32;
+      const edgeMesh = new THREE.InstancedMesh(cylinderGeometry, material, edges.size);
+      edgeMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      const capMesh = new THREE.InstancedMesh(capGeometry, material, vertices.length);
+      capMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      const up = new THREE.Vector3(0, 1, 0);
+      const direction = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      const scale = new THREE.Vector3();
+      const quaternion = new THREE.Quaternion();
+      const matrix = new THREE.Matrix4();
+      let instance = 0;
+      for (const edge of edges) {
+        const [a, b] = edge.split(':').map(Number);
+        const start = vertices[a], end = vertices[b];
+        direction.subVectors(end, start);
+        const length = direction.length();
+        if (length <= 1e-8) continue;
+        center.addVectors(start, end).multiplyScalar(.5);
+        quaternion.setFromUnitVectors(up, direction.multiplyScalar(1 / length));
+        scale.set(1, length, 1);
+        matrix.compose(center, quaternion, scale);
+        edgeMesh.setMatrixAt(instance++, matrix);
+      }
+      edgeMesh.count = instance;
+      for (let i = 0; i < vertices.length; i++) {
+        matrix.makeTranslation(vertices[i].x, vertices[i].y, vertices[i].z);
+        capMesh.setMatrixAt(i, matrix);
+      }
+      edgeMesh.instanceMatrix.needsUpdate = true;
+      capMesh.instanceMatrix.needsUpdate = true;
+      wire.add(edgeMesh, capMesh);
+      return wire;
+    }
+
+    function disposeWireframeGroup(group) {
+      group.traverse(object => {
+        if (object.isInstancedMesh) {
+          object.geometry.dispose();
+          object.material.dispose();
+        }
+      });
+      group.clear();
+    }
+
+    function rebuildSingleWireframe() {
+      disposeWireframeGroup(singleWireframeGroup);
+      if (!current.wireframe) return;
+      singleWireframeGroup.add(makeWireframe(marching, 0x0a3b84));
+    }
+
+    function disposeMultiIso() {
+      multiIsoMarching.forEach(object => {
+        object.geometry.dispose();
+        object.material.dispose();
+      });
+      multiIsoGroup.clear();
+      multiIsoMarching = [];
+      disposeWireframeGroup(multiIsoWireframeGroup);
+      multiIsoWireframes = [];
+    }
+
+    function rebuildMultiIso() {
+      disposeMultiIso();
+      if (!current.multiIso || current.allLower) return;
+      const field = marching.field;
+      for (let index = 0; index < current.multiIsoLevels; index++) {
+        const t = index / (current.multiIsoLevels - 1);
+        const iso = THREE.MathUtils.lerp(current.multiIsoLow, current.multiIsoHigh, t);
+        const color = new THREE.Color().setHSL(t * .83, .88, .56);
+        const material = makeSurfaceMaterial(color);
+        material.transparent = true;
+        material.opacity = .28;
+        material.depthWrite = false;
+        const object = new MarchingCubes(resolution, material, false, false, MULTI_ISO_MAX_POLYGONS);
+        object.renderOrder = index + 1;
+        object.position.set(0, 0, 0);
+        object.scale.set(FIELD_SCALE, FIELD_SCALE, FIELD_SCALE);
+        object.field.set(field);
+        object.normal_cache.fill(0);
+        object.isolation = 1 - iso;
+        object.update();
+        multiIsoGroup.add(object);
+        multiIsoMarching.push(object);
+        if (current.wireframe) {
+          const wire = makeWireframe(object, color);
+          multiIsoWireframeGroup.add(wire);
+          multiIsoWireframes.push(wire);
+        }
+      }
+    }
+
+    function lowerEnergyTerms() {
+      const subshells = orderedSubshells();
+      const targetIndex = subshells.findIndex(orbital => orbital.n === current.n && orbital.l === current.l);
+      const terms = [];
+      for (let i = 0; i < targetIndex; i++) {
+        const subshell = subshells[i];
+        for (let m = -subshell.l; m <= subshell.l; m++) terms.push({ n: subshell.n, l: subshell.l, m, weight: 1 });
+      }
+      return terms;
+    }
+
+    function allLowerTerms() {
+      return [...lowerEnergyTerms(), { n: current.n, l: current.l, m: current.m, weight: 1 }];
+    }
+
+    function orbitalColor(index, total) {
+      const color = new THREE.Color();
+      color.setHSL((index / Math.max(total, 1) + .58) % 1, .72, .54);
+      return color;
+    }
+
+    function disposeAllLower() {
+      allLowerMarching.forEach(object => {
+        object.geometry.dispose();
+        object.material.dispose();
+      });
+      allLowerGroup.clear();
+      allLowerMarching = [];
+      disposeWireframeGroup(allLowerWireframeGroup);
+      allLowerWireframes = [];
+    }
+
+    function rebuildAllLower() {
+      disposeAllLower();
+      const terms = allLowerTerms();
+      terms.forEach((term, index) => {
+        const material = makeSurfaceMaterial(orbitalColor(index, terms.length));
+        const object = new MarchingCubes(resolution, material, false, false, ALL_LOWER_MAX_POLYGONS);
+        object.position.set(0, 0, 0);
+        object.scale.set(FIELD_SCALE, FIELD_SCALE, FIELD_SCALE);
+        writeFieldToMarching(object, [term]);
+        allLowerGroup.add(object);
+        allLowerMarching.push(object);
+        if (current.wireframe) {
+          const wire = makeWireframe(object, orbitalColor(index, terms.length));
+          allLowerWireframeGroup.add(wire);
+          allLowerWireframes.push(wire);
+        }
+      });
+    }
+
+    function fitCloudToView() {
+      const useMultiIso = !current.allLower && current.multiIso;
+      const objects = current.allLower ? allLowerMarching : useMultiIso ? multiIsoMarching : [marching];
+      if (!objects.length) return;
+
+      if (current.allLower) allLowerGroup.position.set(0, 0, 0);
+      else if (useMultiIso) multiIsoGroup.position.set(0, 0, 0);
+      else marching.position.set(0, 0, 0);
+      cloudGroup.updateMatrixWorld(true);
+
+      const bounds = new THREE.Box3();
+      const vertex = new THREE.Vector3();
+      objects.forEach(object => {
+        const position = object.geometry.getAttribute('position');
+        const count = Math.min(position.count, object.geometry.drawRange.count);
+        for (let i = 0; i < count; i++) bounds.expandByPoint(vertex.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld));
+      });
+      if (bounds.isEmpty()) return;
+
+      // Recenter from the actual generated vertices, not the nominal field cube.
+      const offset = bounds.getCenter(new THREE.Vector3()).multiplyScalar(-1);
+      if (current.allLower) allLowerGroup.position.copy(offset);
+      else if (useMultiIso) multiIsoGroup.position.copy(offset);
+      else marching.position.copy(offset);
+      cloudGroup.updateMatrixWorld(true);
+
+      bounds.makeEmpty();
+      objects.forEach(object => {
+        const position = object.geometry.getAttribute('position');
+        const count = Math.min(position.count, object.geometry.drawRange.count);
+        for (let i = 0; i < count; i++) bounds.expandByPoint(vertex.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld));
+      });
+      const center = bounds.getCenter(new THREE.Vector3());
+      let radius = 0;
+      objects.forEach(object => {
+        const position = object.geometry.getAttribute('position');
+        const count = Math.min(position.count, object.geometry.drawRange.count);
+        for (let i = 0; i < count; i++) radius = Math.max(radius, vertex.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld).distanceTo(center));
+      });
+      radius = Math.max(radius, .72);
+      const verticalTangent = Math.tan(THREE.MathUtils.degToRad(camera.fov * .5));
+      const horizontalTangent = verticalTangent * camera.aspect;
+      const distance = radius / Math.min(verticalTangent, horizontalTangent) * 1.55;
+      const direction = new THREE.Vector3(7.4, 4.8, 9.3).normalize();
+      controls.target.copy(center);
+      camera.position.copy(center).add(direction.multiplyScalar(distance));
+      camera.lookAt(center);
+      controls.update();
+      if (!current.allLower && !useMultiIso) {
+        singleWireframeGroup.position.set(0, 0, 0);
+        const singleWireframe = singleWireframeGroup.children[0];
+        if (singleWireframe) {
+          singleWireframe.position.copy(marching.position);
+          singleWireframe.rotation.copy(marching.rotation);
+          singleWireframe.scale.copy(marching.scale);
+        }
+      }
+      allLowerWireframeGroup.position.copy(allLowerGroup.position);
+      multiIsoWireframeGroup.position.copy(multiIsoGroup.position);
+    }
+
+    function updateStageSubheading() {
+      const letter = ANGULAR_LABELS[current.l];
+      const terms = fieldTerms();
+      const lowerTerms = allLowerTerms();
+      const mode = current.allLower
+        ? `ALL LOWER · ${lowerTerms.length} ORBITALS · `
+        : current.multiIso ? `MULTI-ISO · ${current.composite ? 'COMPOSITE · ' : ''}${current.multiIsoLevels} LEVELS · `
+        : current.composite ? `COMPOSITE · ${terms.length - 1} LOWER ORBITALS · ` : '';
+      document.querySelector('#stage-subheading').textContent = `${current.n}${letter} / m = ${signedM(current.m)} · ${mode}NORMALIZED GAUSSIAN FIELD · 72³ SAMPLE GRID`;
+    }
+
+    function renderControls() {
+      const letter = ANGULAR_LABELS[current.l];
+      const nodes = current.n - current.l - 1;
+      document.querySelector('#n-value').textContent = current.n;
+      document.querySelector('#l-value').textContent = letter;
+      document.querySelector('#m-value').textContent = signedM(current.m);
+      document.querySelector('#active-name').textContent = currentLabel();
+      document.querySelector('#active-nodes').textContent = nodes;
+      document.querySelector('#equation').textContent = currentEquation();
+      const terms = fieldTerms();
+      const lowerTerms = allLowerTerms();
+      updateStageSubheading();
+      document.querySelector('#composite-summary').textContent = current.composite
+        ? `Selected orbital + ${terms.length - 1} lower-energy orbitals · two electrons per lower orbital.`
+        : 'Selected orbital only.';
+      document.querySelector('#all-lower-summary').textContent = current.allLower
+        ? `${lowerTerms.length} separate orbital surfaces · one color per orbital.`
+        : 'One selected orbital surface.';
+      document.querySelector('#wireframe-summary').textContent = current.wireframe
+        ? 'Surface triangles shown as capped tubes.'
+        : 'Filled isosurface.';
+      document.querySelector('#multi-iso-summary').textContent = current.allLower
+        ? 'Available with a single orbital or composite only.'
+        : current.multiIso
+          ? `${current.multiIsoLevels} rainbow levels from ${current.multiIsoLow.toFixed(2)} to ${current.multiIsoHigh.toFixed(2)}.`
+          : 'One isosurface level.';
+      document.querySelector('#tube-radius-range').value = current.tubeRadius;
+      document.querySelector('#tube-radius-value').textContent = current.tubeRadius.toFixed(3);
+      document.querySelector('#composite-toggle').checked = current.composite;
+      document.querySelector('#all-lower-toggle').checked = current.allLower;
+      document.querySelector('#wireframe-toggle').checked = current.wireframe;
+      document.querySelector('#multi-iso-toggle').checked = current.multiIso;
+      document.querySelector('#multi-iso-toggle').disabled = current.allLower;
+      document.querySelector('#multi-iso-count').value = current.multiIsoLevels;
+      document.querySelector('#multi-iso-count-value').textContent = current.multiIsoLevels;
+      updateSliderFill('multi-iso-count');
+      document.querySelector('#multi-iso-options').hidden = !current.multiIso || current.allLower;
+      document.querySelector('#single-iso-controls').hidden = current.multiIso;
+      syncMultiIsoControls();
+      document.querySelectorAll('#n-controls .chip').forEach(button => button.classList.toggle('active', Number(button.dataset.n) === current.n));
+      document.querySelectorAll('#l-controls .chip').forEach(button => {
+        const l = Number(button.dataset.l);
+        button.disabled = l >= current.n;
+        button.classList.toggle('active', l === current.l);
+      });
+      document.querySelectorAll('#m-controls .m-button').forEach(button => {
+        const m = Number(button.dataset.m);
+        button.hidden = Math.abs(m) > current.l;
+        button.classList.toggle('active', m === current.m);
+      });
+      marching.visible = !current.allLower && !current.multiIso && !current.wireframe;
+      singleWireframeGroup.visible = !current.allLower && !current.multiIso && current.wireframe;
+      allLowerGroup.visible = current.allLower && !current.wireframe;
+      allLowerWireframeGroup.visible = current.allLower && current.wireframe;
+      multiIsoGroup.visible = !current.allLower && current.multiIso && !current.wireframe;
+      multiIsoWireframeGroup.visible = !current.allLower && current.multiIso && current.wireframe;
+      if (current.allLower) {
+        disposeMultiIso();
+        rebuildAllLower();
+      }
+      else {
+        disposeAllLower();
+        writeField();
+        if (current.multiIso) rebuildMultiIso();
+        else disposeMultiIso();
+      }
+      fitCloudToView();
+    }
+
+    function makeButton(text, className, dataset) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.textContent = text;
+      Object.entries(dataset).forEach(([key, value]) => { button.dataset[key] = value; });
+      return button;
+    }
+
+    for (let n = 1; n <= 7; n++) {
+      const button = makeButton(n, 'chip', { n });
+      button.addEventListener('click', () => {
+        current.n = n;
+        if (current.l >= current.n) current.l = current.n - 1;
+        current.m = 0;
+        renderControls();
+      });
+      document.querySelector('#n-controls').appendChild(button);
+    }
+
+    ANGULAR_LABELS.forEach((label, l) => {
+      const button = makeButton(label, 'chip', { l });
+      button.addEventListener('click', () => {
+        if (l >= current.n) return;
+        current.l = l;
+        current.m = 0;
+        renderControls();
+      });
+      document.querySelector('#l-controls').appendChild(button);
+    });
+
+    for (let m = -4; m <= 4; m++) {
+      const button = makeButton(signedM(m), 'm-button', { m });
+      button.addEventListener('click', () => {
+        if (Math.abs(m) > current.l) return;
+        current.m = m;
+        renderControls();
+      });
+      document.querySelector('#m-controls').appendChild(button);
+    }
+
+    function resize() {
+      if (videoExportInProgress || screenshotExportInProgress) return;
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+    }
+
+    async function exportRotationVideo() {
+      const exportButton = document.querySelector('#export-video');
+      const resolutionSelect = document.querySelector('#video-resolution');
+      const exportStatus = document.querySelector('#video-export-status');
+      const downloadLink = document.querySelector('#download-video');
+      const screenshotButton = document.querySelector('#screenshot-3d');
+      const controlPanel = document.querySelector('.control-panel');
+      const resetButton = document.querySelector('#reset-view');
+      const previousControlsEnabled = controls.enabled;
+      let mediaRecorder = null;
+      let captureStream = null;
+      let savedView = null;
+      let rendererResized = false;
+
+      exportButton.disabled = true;
+      resolutionSelect.disabled = true;
+      resetButton.disabled = true;
+      screenshotButton.disabled = true;
+      controlPanel.inert = true;
+      controls.enabled = false;
+      renderer.domElement.style.pointerEvents = 'none';
+      downloadLink.hidden = true;
+      downloadLink.removeAttribute('href');
+      if (videoExportObjectUrl) {
+        URL.revokeObjectURL(videoExportObjectUrl);
+        videoExportObjectUrl = null;
+      }
+      exportStatus.textContent = 'Preparing 1-minute high-quality recording…';
+
+      try {
+        if (!('MediaRecorder' in window) || typeof renderer.domElement.captureStream !== 'function') {
+          throw new Error('Canvas recording is not available in this browser.');
+        }
+        const [width, height] = resolutionSelect.value.split('x').map(Number);
+        const targetBitrate = Math.min(width * height * 12, 80_000_000);
+
+        savedView = {
+          width: viewport.clientWidth,
+          height: viewport.clientHeight,
+          pixelRatio: renderer.getPixelRatio(),
+          aspect: camera.aspect,
+          position: camera.position.clone(),
+          quaternion: camera.quaternion.clone(),
+          target: controls.target.clone(),
+          controlsEnabled: previousControlsEnabled
+        };
+        videoExportInProgress = true;
+        renderer.setPixelRatio(1);
+        renderer.setSize(width, height, false);
+        rendererResized = true;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+
+        captureStream = renderer.domElement.captureStream(VIDEO_FRAME_RATE);
+        const mimeType = [
+          'video/mp4;codecs="avc1.640028"',
+          'video/mp4;codecs="avc1"',
+          'video/mp4',
+          'video/webm;codecs="vp9"',
+          'video/webm;codecs="vp8"',
+          'video/webm'
+        ].find(type => MediaRecorder.isTypeSupported(type));
+        const recorderOptions = { videoBitsPerSecond: targetBitrate };
+        if (mimeType) recorderOptions.mimeType = mimeType;
+        mediaRecorder = new MediaRecorder(captureStream, recorderOptions);
+        const recordedChunks = [];
+        const recordingFinished = new Promise((resolve, reject) => {
+          mediaRecorder.addEventListener('dataavailable', event => {
+            if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+          });
+          mediaRecorder.addEventListener('stop', () => {
+            resolve(new Blob(recordedChunks, { type: mediaRecorder.mimeType || mimeType || 'video/webm' }));
+          }, { once: true });
+          mediaRecorder.addEventListener('error', event => {
+            reject(event.error || new Error('The browser video recorder failed.'));
+          }, { once: true });
+        });
+
+        const orbit = new THREE.Spherical().setFromVector3(savedView.position.clone().sub(savedView.target));
+        activeVideoOrbit = {
+          spherical: orbit,
+          initialTheta: orbit.theta,
+          target: savedView.target.clone(),
+          frameOffset: new THREE.Vector3()
+        };
+        renderer.render(scene, camera);
+        mediaRecorder.start(1000);
+        videoExportStartedAt = performance.now();
+        const actualBitrate = mediaRecorder.videoBitsPerSecond || targetBitrate;
+        const actualMbps = (actualBitrate / 1_000_000).toFixed(1);
+        exportStatus.textContent = `Recording 1-minute rotation · ${actualMbps} Mbps · ${mediaRecorder.mimeType || 'browser default'}`;
+
+        const durationElapsed = new Promise(resolve => setTimeout(resolve, VIDEO_DURATION_SECONDS * 1000));
+        await Promise.race([
+          durationElapsed,
+          recordingFinished.then(() => { throw new Error('The browser stopped recording before the rotation finished.'); })
+        ]);
+        activeVideoOrbit.spherical.theta = activeVideoOrbit.initialTheta + Math.PI * 2;
+        camera.position.copy(activeVideoOrbit.target).add(activeVideoOrbit.frameOffset.setFromSpherical(activeVideoOrbit.spherical));
+        camera.lookAt(activeVideoOrbit.target);
+        renderer.render(scene, camera);
+        mediaRecorder.stop();
+        exportStatus.textContent = 'Finishing video…';
+        const videoBlob = await recordingFinished;
+        if (!videoBlob.size) throw new Error('The browser produced an empty video.');
+        videoExportObjectUrl = URL.createObjectURL(videoBlob);
+        downloadLink.href = videoExportObjectUrl;
+        const extension = videoBlob.type.includes('mp4') ? 'mp4' : 'webm';
+        downloadLink.textContent = `DOWNLOAD ${extension.toUpperCase()}`;
+        downloadLink.download = `GaussViz-${current.n}${ANGULAR_LABELS[current.l]}-rotation-${width}x${height}.${extension}`;
+        downloadLink.hidden = false;
+        exportStatus.textContent = `${extension.toUpperCase()} ready · ${width} × ${height} · 1 minute · ${actualMbps} Mbps`;
+      } catch (error) {
+        exportStatus.textContent = `Export failed · ${error instanceof Error ? error.message : String(error)}`;
+      } finally {
+        videoExportStartedAt = null;
+        activeVideoOrbit = null;
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+        if (captureStream) captureStream.getTracks().forEach(track => track.stop());
+        if (rendererResized && savedView) {
+          camera.position.copy(savedView.position);
+          camera.quaternion.copy(savedView.quaternion);
+          controls.target.copy(savedView.target);
+          controls.enabled = savedView.controlsEnabled;
+          renderer.setPixelRatio(savedView.pixelRatio);
+          videoExportInProgress = false;
+          resize();
+          renderer.render(scene, camera);
+        } else {
+          controls.enabled = previousControlsEnabled;
+          videoExportInProgress = false;
+        }
+        controlPanel.inert = false;
+        renderer.domElement.style.pointerEvents = '';
+        resetButton.disabled = false;
+        screenshotButton.disabled = false;
+        resolutionSelect.disabled = false;
+        exportButton.disabled = false;
+      }
+    }
+
+    async function export3DScreenshot() {
+      if (videoExportInProgress || screenshotExportInProgress) return;
+      const screenshotButton = document.querySelector('#screenshot-3d');
+      const exportButton = document.querySelector('#export-video');
+      const resolutionSelect = document.querySelector('#video-resolution');
+      const exportStatus = document.querySelector('#video-export-status');
+      const controlPanel = document.querySelector('.control-panel');
+      const resetButton = document.querySelector('#reset-view');
+      const previousControlsEnabled = controls.enabled;
+      const width = 3840;
+      const height = 2160;
+      let savedView = null;
+      let rendererResized = false;
+
+      screenshotButton.disabled = true;
+      exportButton.disabled = true;
+      resolutionSelect.disabled = true;
+      resetButton.disabled = true;
+      controlPanel.inert = true;
+      controls.enabled = false;
+      screenshotExportInProgress = true;
+      exportStatus.textContent = 'Rendering 4K PNG…';
+
+      try {
+        savedView = {
+          pixelRatio: renderer.getPixelRatio(),
+          aspect: camera.aspect,
+          position: camera.position.clone(),
+          quaternion: camera.quaternion.clone(),
+          target: controls.target.clone(),
+          controlsEnabled: previousControlsEnabled
+        };
+        renderer.setPixelRatio(1);
+        renderer.setSize(width, height, false);
+        rendererResized = true;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
+
+        const pngBlob = await new Promise(resolve => renderer.domElement.toBlob(resolve, 'image/png'));
+        if (!pngBlob) throw new Error('The browser could not create the PNG image.');
+        const pngUrl = URL.createObjectURL(pngBlob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = `GaussViz-${current.n}${ANGULAR_LABELS[current.l]}-3D-${width}x${height}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+        setTimeout(() => URL.revokeObjectURL(pngUrl), 30_000);
+        exportStatus.textContent = `PNG ready · ${width} × ${height} · 3D rendering only`;
+      } catch (error) {
+        exportStatus.textContent = `Screenshot failed · ${error instanceof Error ? error.message : String(error)}`;
+      } finally {
+        if (rendererResized && savedView) {
+          camera.position.copy(savedView.position);
+          camera.quaternion.copy(savedView.quaternion);
+          controls.target.copy(savedView.target);
+          controls.enabled = savedView.controlsEnabled;
+          renderer.setPixelRatio(savedView.pixelRatio);
+          screenshotExportInProgress = false;
+          resize();
+          renderer.render(scene, camera);
+        } else {
+          controls.enabled = previousControlsEnabled;
+          screenshotExportInProgress = false;
+        }
+        controlPanel.inert = false;
+        resetButton.disabled = false;
+        resolutionSelect.disabled = false;
+        exportButton.disabled = false;
+        screenshotButton.disabled = false;
+      }
+    }
+
+    document.querySelector('#iso-range').addEventListener('input', (event) => {
+      current.iso = Number(event.target.value);
+      document.querySelector('#iso-value').textContent = current.iso.toFixed(2);
+      if (current.allLower) {
+        rebuildAllLower();
+      } else {
+        marching.isolation = 1 - current.iso;
+        marching.update();
+        rebuildSingleWireframe();
+      }
+      updateSliderFill();
+    });
+    document.querySelector('#tube-radius-range').addEventListener('input', (event) => {
+      current.tubeRadius = Number(event.target.value);
+      document.querySelector('#tube-radius-value').textContent = current.tubeRadius.toFixed(3);
+      updateSliderFill('tube-radius-range');
+      if (!current.wireframe) return;
+      if (current.allLower) rebuildAllLower();
+      else if (current.multiIso) rebuildMultiIso();
+      else rebuildSingleWireframe();
+    });
+    document.querySelector('#composite-toggle').addEventListener('change', (event) => {
+      current.composite = event.target.checked;
+      if (current.composite) current.allLower = false;
+      renderControls();
+    });
+    document.querySelector('#all-lower-toggle').addEventListener('change', (event) => {
+      current.allLower = event.target.checked;
+      if (current.allLower) {
+        current.composite = false;
+        current.multiIso = false;
+      }
+      renderControls();
+    });
+    document.querySelector('#wireframe-toggle').addEventListener('change', (event) => {
+      current.wireframe = event.target.checked;
+      renderControls();
+    });
+    document.querySelector('#multi-iso-toggle').addEventListener('change', (event) => {
+      current.multiIso = event.target.checked && !current.allLower;
+      renderControls();
+    });
+    document.querySelector('#multi-iso-low').addEventListener('input', (event) => {
+      current.multiIsoLow = Number(event.target.value);
+      syncMultiIsoControls();
+      document.querySelector('#multi-iso-summary').textContent = `${current.multiIsoLevels} rainbow levels from ${current.multiIsoLow.toFixed(2)} to ${current.multiIsoHigh.toFixed(2)}.`;
+      if (current.multiIso) {
+        rebuildMultiIso();
+      }
+    });
+    document.querySelector('#multi-iso-high').addEventListener('input', (event) => {
+      current.multiIsoHigh = Number(event.target.value);
+      syncMultiIsoControls();
+      document.querySelector('#multi-iso-summary').textContent = `${current.multiIsoLevels} rainbow levels from ${current.multiIsoLow.toFixed(2)} to ${current.multiIsoHigh.toFixed(2)}.`;
+      if (current.multiIso) {
+        rebuildMultiIso();
+      }
+    });
+    document.querySelector('#multi-iso-count').addEventListener('input', (event) => {
+      current.multiIsoLevels = Number(event.target.value);
+      document.querySelector('#multi-iso-count-value').textContent = current.multiIsoLevels;
+      updateSliderFill('multi-iso-count');
+      document.querySelector('#multi-iso-summary').textContent = `${current.multiIsoLevels} rainbow levels from ${current.multiIsoLow.toFixed(2)} to ${current.multiIsoHigh.toFixed(2)}.`;
+      updateStageSubheading();
+      if (current.multiIso) rebuildMultiIso();
+    });
+    document.querySelector('#reset-view').addEventListener('click', () => {
+      fitCloudToView();
+    });
+    document.querySelector('#export-video').addEventListener('click', exportRotationVideo);
+    document.querySelector('#screenshot-3d').addEventListener('click', export3DScreenshot);
+
+    window.addEventListener('resize', resize);
+    resize();
+    updateSliderFill();
+    updateSliderFill('tube-radius-range');
+    renderControls();
+    loading.remove();
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const elapsed = clock.getElapsedTime();
+      nucleusGlow.scale.setScalar(1 + Math.sin(elapsed * 1.7) * .08);
+      if (videoExportInProgress && videoExportStartedAt !== null && activeVideoOrbit) {
+        const progress = Math.min((performance.now() - videoExportStartedAt) / (VIDEO_DURATION_SECONDS * 1000), 1);
+        activeVideoOrbit.spherical.theta = activeVideoOrbit.initialTheta + Math.PI * 2 * progress;
+        camera.position.copy(activeVideoOrbit.target).add(activeVideoOrbit.frameOffset.setFromSpherical(activeVideoOrbit.spherical));
+        camera.lookAt(activeVideoOrbit.target);
+        renderer.render(scene, camera);
+      } else if (!videoExportInProgress && !screenshotExportInProgress) {
+        controls.update();
+        renderer.render(scene, camera);
+      }
+    }
+    animate();
+  </script>
+</body>
+</html>
